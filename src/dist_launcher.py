@@ -116,6 +116,7 @@ def build_distributed_topology(algo, rank):
         config = load_json_config(CONFIG_PATH)
         local_ip = config["ip_list"][rank]
         base_port = int(config.get("base_port", 5000))
+        local_port = base_port + rank
         left_ip = config["ip_list"][(rank - 1) % config["world_size"]]
         right_ip = config["ip_list"][(rank + 1) % config["world_size"]]
         listener = create_socket()
