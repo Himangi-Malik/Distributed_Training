@@ -121,6 +121,10 @@ def build_distributed_topology(algo, rank):
         right_ip = config["ip_list"][(rank + 1) % config["world_size"]]
         listener = create_socket()
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        print(
+            f"[dist_launcher] rank={rank} ring_ports local={local_ip}:{local_port} left={left_ip}:{base_port + ((rank - 1) % config['world_size'])} right={right_ip}:{base_port + ((rank + 1) % config['world_size'])}",
+            flush=True,
+        )
         print(f"[dist_launcher] rank={rank} binding {local_ip}:{local_port}", flush=True)
         listener.bind((local_ip, local_port))
         print(f"[dist_launcher] rank={rank} listening on {local_ip}:{local_port}", flush=True)
@@ -132,7 +136,10 @@ def build_distributed_topology(algo, rank):
         start_time = time.time()
         while True:
             try:
-                print(f"[dist_launcher] rank={rank} attempting connect to {right_ip}:{right_port}", flush=True)
+                print(
+                    f"[dist_launcher] rank={rank} attempting connect to right_peer={config['rank'] + 1 if rank + 1 < config['world_size'] else 0} {right_ip}:{right_port}",
+                    flush=True,
+                )
                 right_conn.connect((right_ip, right_port))
                 print(f"[dist_launcher] rank={rank} connected to {right_ip}:{right_port}", flush=True)
                 break
