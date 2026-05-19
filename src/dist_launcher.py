@@ -137,7 +137,7 @@ def build_distributed_topology(algo, rank):
         while True:
             try:
                 print(
-                    f"[dist_launcher] rank={rank} attempting connect to right_peer={config['rank'] + 1 if rank + 1 < config['world_size'] else 0} {right_ip}:{right_port}",
+                    f"[dist_launcher] rank={rank} attempting connect to right_peer={(rank + 1) % config['world_size']} {right_ip}:{right_port}",
                     flush=True,
                 )
                 right_conn.connect((right_ip, right_port))
