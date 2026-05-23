@@ -11,17 +11,6 @@ def build_local_topology(algo, pipes, rank, world_size):
 
             # send to right neighbor (r → r+1)
             "right_conn": pipes[rank][1],
-
-            "left_endpoint_info": {
-                "peer_rank": (rank - 1) % world_size,
-                "direction": "left",
-                "transport": "pipe",
-            },
-            "right_endpoint_info": {
-                "peer_rank": (rank + 1) % world_size,
-                "direction": "right",
-                "transport": "pipe",
-            },
         }
 
     if algo == "tree":
@@ -33,29 +22,13 @@ def build_local_topology(algo, pipes, rank, world_size):
             "parent_rank": parent,
             "parent_conn": None if parent is None else pipes[parent][1],
             "child_conns": [],
-            "parent_endpoint_info": None if parent is None else {
-                "peer_rank": parent,
-                "direction": "up",
-                "transport": "pipe",
-            },
-            "child_endpoint_info": [],
         }
 
         if left_child < world_size:
             topo["child_conns"].append(pipes[left_child][0])
-            topo["child_endpoint_info"].append({
-                "peer_rank": left_child,
-                "direction": "left_child",
-                "transport": "pipe",
-            })
 
         if right_child < world_size:
             topo["child_conns"].append(pipes[right_child][0])
-            topo["child_endpoint_info"].append({
-                "peer_rank": right_child,
-                "direction": "right_child",
-                "transport": "pipe",
-            })
         return topo
 
     if algo == "parameter_server":
@@ -73,10 +46,7 @@ def launch_local(config):
 
     for rank in range(world_size):
         topo = build_local_topology(algo, pipes, rank, world_size)
-        print(
-            f"rank {rank} left={topo.get('left_endpoint_info')}, right={topo.get('right_endpoint_info')}",
-            flush=True,
-        )
+        print(f"rank {rank} local topology ready", flush=True)
 
         worker_config = {
             **config,

@@ -12,15 +12,6 @@ def load_json_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as file_handle:
         return json.load(file_handle)
 
-
-def get_left_right_neighbor_ip(left_peer_rank, right_peer_rank):
-    config = load_json_config(CONFIG_PATH)
-    ip_list = config["ip_list"]
-    left_ip = ip_list[left_peer_rank]
-    right_ip = ip_list[right_peer_rank]
-    return left_ip, right_ip
-
-
 def create_socket():
     return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -221,66 +212,61 @@ def build_parameter_server_topology(rank):
     return endpoints
 
 
+def build_ring_topology(rank):
+    """Setup ring topology for distributed ring aggregation."""
+    config = load_json_config(CONFIG_PATH)
+    local_ip = config["ip_list"][rank]
+    base_port = int(config.get("base_port", 5000))
+    local_port = base_port + rank
+    left_ip = config["ip_list"][(rank - 1) % config["world_size"]]
+    right_ip = config["ip_list"][(rank + 1) % config["world_size"]]
+    listener = create_socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    print(
+        f"[dist_launcher] rank={rank} ring_ports local={local_ip}:{local_port} left={left_ip}:{base_port + ((rank - 1) % config['world_size'])} right={right_ip}:{base_port + ((rank + 1) % config['world_size'])}",
+        flush=True,
+    )
+    print(f"[dist_launcher] rank={rank} binding {local_ip}:{local_port}", flush=True)
+    listener.bind((local_ip, local_port))
+    print(f"[dist_launcher] rank={rank} listening on {local_ip}:{local_port}", flush=True)
+    listener.listen(1)
+
+    right_conn = create_socket()
+    right_port = base_port + ((rank + 1) % config["world_size"])
+    connect_timeout = float(config.get("connect_timeout", 10.0))
+    start_time = time.time()
+    while True:
+        try:
+            print(
+                f"[dist_launcher] rank={rank} attempting connect to right_peer={(rank + 1) % config['world_size']} {right_ip}:{right_port}",
+                flush=True,
+            )
+            right_conn.connect((right_ip, right_port))
+            print(f"[dist_launcher] rank={rank} connected to {right_ip}:{right_port}", flush=True)
+            break
+        except OSError as error:
+            if time.time() - start_time > connect_timeout:
+                raise ConnectionError(
+                    f"rank={rank} failed to connect to {right_ip}:{right_port} after {connect_timeout}s: {error}"
+                )
+            print(
+                f"[dist_launcher] rank={rank} connect failed to {right_ip}:{right_port}: {error}; retrying",
+                flush=True,
+            )
+            time.sleep(0.2)
+
+    print(f"[dist_launcher] rank={rank} waiting to accept left connection on {local_ip}:{local_port}", flush=True)
+    left_conn, _ = listener.accept()
+    print(f"[dist_launcher] rank={rank} accepted connection from left peer", flush=True)
+    return {
+        "left_endpoint": SocketEndpoint(left_conn, listener=listener, rank=rank, direction="left"),
+        "right_endpoint": SocketEndpoint(right_conn, rank=rank, direction="right"),
+    }
+
+
 def build_distributed_topology(algo, rank):
     if algo == "ring":
-        config = load_json_config(CONFIG_PATH)
-        local_ip = config["ip_list"][rank]
-        base_port = int(config.get("base_port", 5000))
-        local_port = base_port + rank
-        left_ip = config["ip_list"][(rank - 1) % config["world_size"]]
-        right_ip = config["ip_list"][(rank + 1) % config["world_size"]]
-        listener = create_socket()
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        print(
-            f"[dist_launcher] rank={rank} ring_ports local={local_ip}:{local_port} left={left_ip}:{base_port + ((rank - 1) % config['world_size'])} right={right_ip}:{base_port + ((rank + 1) % config['world_size'])}",
-            flush=True,
-        )
-        print(f"[dist_launcher] rank={rank} binding {local_ip}:{local_port}", flush=True)
-        listener.bind((local_ip, local_port))
-        print(f"[dist_launcher] rank={rank} listening on {local_ip}:{local_port}", flush=True)
-        listener.listen(1)
-
-        right_conn = create_socket()
-        right_port = base_port + ((rank + 1) % config["world_size"])
-        connect_timeout = float(config.get("connect_timeout", 10.0))
-        start_time = time.time()
-        while True:
-            try:
-                print(
-                    f"[dist_launcher] rank={rank} attempting connect to right_peer={(rank + 1) % config['world_size']} {right_ip}:{right_port}",
-                    flush=True,
-                )
-                right_conn.connect((right_ip, right_port))
-                print(f"[dist_launcher] rank={rank} connected to {right_ip}:{right_port}", flush=True)
-                break
-            except OSError as error:
-                if time.time() - start_time > connect_timeout:
-                    raise ConnectionError(
-                        f"rank={rank} failed to connect to {right_ip}:{right_port} after {connect_timeout}s: {error}"
-                    )
-                print(
-                    f"[dist_launcher] rank={rank} connect failed to {right_ip}:{right_port}: {error}; retrying",
-                    flush=True,
-                )
-                time.sleep(0.2)
-
-        print(f"[dist_launcher] rank={rank} waiting to accept left connection on {local_ip}:{local_port}", flush=True)
-        left_conn, _ = listener.accept()
-        print(f"[dist_launcher] rank={rank} accepted connection from left peer", flush=True)
-        return {
-            "left_endpoint": SocketEndpoint(left_conn, listener=listener, rank=rank, direction="left"),
-            "right_endpoint": SocketEndpoint(right_conn, rank=rank, direction="right"),
-            "left_endpoint_info": {
-                "peer_rank": (rank - 1) % config["world_size"],
-                "direction": "left",
-                "transport": "socket",
-            },
-            "right_endpoint_info": {
-                "peer_rank": (rank + 1) % config["world_size"],
-                "direction": "right",
-                "transport": "socket",
-            },
-        }
+        return build_ring_topology(rank)
 
     if algo == "tree":
         return build_tree_topology(rank)

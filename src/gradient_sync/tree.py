@@ -5,22 +5,6 @@
     teardown = close connections """
 
 import torch
-import math
-
-
-class _SocketEndpointPlaceholder:
-    def __init__(self, direction: str):
-        self.direction = direction
-
-    def send(self, _payload):
-        raise NotImplementedError(f"socket stream send not implemented yet ({self.direction})")
-
-    def recv(self):
-        raise NotImplementedError(f"socket stream recv not implemented yet ({self.direction})")
-
-    def close(self):
-        return None
-
 
 def _build_binary_tree(rank: int, world_size: int) -> dict:
     """Compute parent, left_child, right_child for binary tree topology."""
@@ -35,7 +19,7 @@ def _build_binary_tree(rank: int, world_size: int) -> dict:
 
 
 def setup_distributed(config: dict) -> dict:
-    """Setup tree for distributed mode using socket endpoints."""
+    """Setup tree for distributed mode using socket endpoints created in dist_launcher."""
     rank = config["rank"]
     world_size = config["world_size"]
     tree_structure = _build_binary_tree(rank, world_size)
@@ -189,12 +173,22 @@ def average(local_grad, comm_ctx, config: dict):
             averaged_tensor = _normalize_tensor_grad(broadcast_data)
             if log_phases:
                 print(f"[tree.average] rank={rank} broadcast_recv_from_parent={parent}", flush=True)
+
+            if left_child is not None:
+                left_endpoint = comm_ctx.get("left_child_endpoint") or comm_ctx.get("left_child_conn")
+                if left_endpoint is not None:
+                    left_endpoint.send({"gradients": averaged_tensor})
+
+            if right_child is not None:
+                right_endpoint = comm_ctx.get("right_child_endpoint") or comm_ctx.get("right_child_conn")
+                if right_endpoint is not None:
+                    right_endpoint.send({"gradients": averaged_tensor})
         except Exception as e:
             print(f"[tree.average] rank={rank} error receiving broadcast from parent: {e}", flush=True)
             averaged_tensor = accumulated / float(world_size)
     else:
         # Root node: average and broadcast to children
-        averaged_tensor = accumulated / float(world_size + num_children_processed)
+        averaged_tensor = accumulated / float(world_size)
         
         if left_child is not None:
             left_endpoint = comm_ctx.get("left_child_endpoint") or comm_ctx.get("left_child_conn")

@@ -5,19 +5,6 @@
 
 import torch
 
-class _SocketEndpointPlaceholder:
-    def __init__(self, direction: str):
-        self.direction = direction
-
-    def send(self, _payload):
-        raise NotImplementedError(f"socket stream send not implemented yet ({self.direction})")
-
-    def recv(self):
-        raise NotImplementedError(f"socket stream recv not implemented yet ({self.direction})")
-
-    def close(self):
-        return None
-
 
 def setup_distributed(config: dict) -> dict:
     left_endpoint = config.get("left_endpoint")
@@ -38,8 +25,6 @@ def setup_distributed(config: dict) -> dict:
         "world_size": config["world_size"],
         "left_endpoint": left_endpoint,
         "right_endpoint": right_endpoint,
-        "left_endpoint_info": config.get("left_endpoint_info"),
-        "right_endpoint_info": config.get("right_endpoint_info"),
         "transport": "socket",
     }
 
@@ -50,8 +35,6 @@ def setup_local(config: dict) -> dict:
             "world_size": config["world_size"],
             "left_endpoint": config.get("left_conn"),
             "right_endpoint": config.get("right_conn"),
-            "left_endpoint_info": config.get("left_endpoint_info"),
-            "right_endpoint_info": config.get("right_endpoint_info"),
             "transport": "pipe",
         }
 
