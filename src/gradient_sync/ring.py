@@ -72,6 +72,9 @@ def _normalize_tensor_grad(grad_tensor):
     if grad_tensor is None:
         raise ValueError("local_grad must contain a 'gradients' field")
 
+    if isinstance(grad_tensor, dict):
+        grad_tensor = grad_tensor.get("gradients")
+
     if not isinstance(grad_tensor, torch.Tensor):
         grad_tensor = torch.as_tensor(grad_tensor, dtype=torch.float32)
     else:
