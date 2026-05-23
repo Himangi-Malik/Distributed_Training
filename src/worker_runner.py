@@ -61,6 +61,15 @@ def run_worker(config):
             print(f"[rank {config['rank']}] warning: average placeholder hit: {error}", flush=True)
             synced_grad = local_grad
 
+        # If the model module exposes an `apply_synced_gradients` hook, call it
+        # so parameter updates happen after the gradient synchronization step.
+        if hasattr(model_module, "apply_synced_gradients"):
+            try:
+                averaged = synced_grad.get("gradients") if isinstance(synced_grad, dict) else synced_grad
+                model_module.apply_synced_gradients(model, averaged)
+            except Exception as e:
+                print(f"[rank {config['rank']}] apply_synced_gradients failed: {e}", flush=True)
+
         loss = synced_grad.get("loss") if isinstance(synced_grad, dict) else None
         print(f"[rank {config['rank']}] gradients {_summarize_grad(synced_grad)} loss={loss}", flush=True)
     finally:
