@@ -24,6 +24,11 @@ class SimpleCNN(nn.Module):
 
 def build_model(config: dict):
     """Build and initialize CNN model."""
+    # CRITICAL: Set fixed seed on ALL ranks before model creation to ensure
+    # identical parameter initialization. This is required for valid distributed SGD.
+    seed = int(config.get("seed", 42))
+    torch.manual_seed(seed)
+    
     model = SimpleCNN()
     return {
         "model": model,
@@ -37,9 +42,15 @@ def train_step(model_obj, config: dict):
     model = model_obj["model"]
     criterion = model_obj["criterion"]
     lr = model_obj["lr"]
+    rank = config.get("rank", 0)
+    epoch = config.get("current_epoch", 0)
     
-    # Synthetic batch: 4 samples of 28x28 single-channel images
-    batch_size = 4
+    # Generate rank-specific synthetic data: different data per rank enables real gradient averaging
+    # Seed includes rank and epoch for reproducibility while maintaining data diversity
+    data_seed = 1000 + rank * 100 + epoch
+    torch.manual_seed(data_seed)
+    
+    batch_size = int(config.get("batch_size", 4))
     x = torch.randn(batch_size, 1, 28, 28, dtype=torch.float32)
     y = torch.randint(0, 10, (batch_size,), dtype=torch.long)
     
@@ -70,3 +81,14 @@ def train_step(model_obj, config: dict):
         "gradients": grad_vector,
         "loss": float(loss.detach()),
     }
+
+
+def apply_synced_gradients(model_obj, averaged_grad):
+    """Apply synchronized averaged gradients back into the model."""
+    model = model_obj["model"]
+    
+    pointer = 0
+    for param in model.parameters():
+        numel = param.numel()
+        param.grad = averaged_grad[pointer:pointer + numel].view_as(param)
+        pointer += numel

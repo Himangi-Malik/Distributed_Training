@@ -31,8 +31,9 @@ def _summarize_grad(grad_obj: dict) -> str:
 def run_worker(config):
     algo_module = get_algo_module(config["algo"])
     model_module = get_model_module(config["model"])
+    epochs = int(config.get("epochs", 1))
 
-    print(f"[rank {config['rank']}] start mode={config['mode']} algo={config['algo']}", flush=True)
+    print(f"[rank {config['rank']}] start mode={config['mode']} algo={config['algo']} epochs={epochs}", flush=True)
 
     comm_ctx = None
 
@@ -47,31 +48,34 @@ def run_worker(config):
             print(f"[rank {config['rank']}] warning: build_model placeholder hit: {error}", flush=True)
             model = {"model_tag": config["model"], "placeholder": True}
 
-        # Step 3: run one tiny train step to get gradients.
-        try:
-            local_grad = model_module.train_step(model, config)
-        except NotImplementedError as error:
-            print(f"[rank {config['rank']}] warning: train_step placeholder hit: {error}", flush=True)
-            local_grad = {"rank": config["rank"], "gradients": torch.tensor([0.0], dtype=torch.float32)}
-
-        # Step 4: pass gradients to algorithm module.
-        try:
-            synced_grad = algo_module.average(local_grad, comm_ctx, config)
-        except NotImplementedError as error:
-            print(f"[rank {config['rank']}] warning: average placeholder hit: {error}", flush=True)
-            synced_grad = local_grad
-
-        # If the model module exposes an `apply_synced_gradients` hook, call it
-        # so parameter updates happen after the gradient synchronization step.
-        if hasattr(model_module, "apply_synced_gradients"):
+        # Step 3: run training loop for specified number of epochs.
+        for epoch in range(epochs):
+            # Pass current epoch to model so synthetic data can be rank/epoch-specific
+            epoch_config = {**config, "current_epoch": epoch}
             try:
-                averaged = synced_grad.get("gradients") if isinstance(synced_grad, dict) else synced_grad
-                model_module.apply_synced_gradients(model, averaged)
-            except Exception as e:
-                print(f"[rank {config['rank']}] apply_synced_gradients failed: {e}", flush=True)
+                local_grad = model_module.train_step(model, epoch_config)
+            except NotImplementedError as error:
+                print(f"[rank {config['rank']}] epoch {epoch} warning: train_step placeholder hit: {error}", flush=True)
+                local_grad = {"rank": config["rank"], "gradients": torch.tensor([0.0], dtype=torch.float32)}
 
-        loss = synced_grad.get("loss") if isinstance(synced_grad, dict) else None
-        print(f"[rank {config['rank']}] gradients {_summarize_grad(synced_grad)} loss={loss}", flush=True)
+            # Step 4: pass gradients to algorithm module.
+            try:
+                synced_grad = algo_module.average(local_grad, comm_ctx, config)
+            except NotImplementedError as error:
+                print(f"[rank {config['rank']}] epoch {epoch} warning: average placeholder hit: {error}", flush=True)
+                synced_grad = local_grad
+
+            # If the model module exposes an `apply_synced_gradients` hook, call it
+            # so parameter updates happen after the gradient synchronization step.
+            if hasattr(model_module, "apply_synced_gradients"):
+                try:
+                    averaged = synced_grad.get("gradients") if isinstance(synced_grad, dict) else synced_grad
+                    model_module.apply_synced_gradients(model, averaged)
+                except Exception as e:
+                    print(f"[rank {config['rank']}] epoch {epoch} apply_synced_gradients failed: {e}", flush=True)
+
+            loss = synced_grad.get("loss") if isinstance(synced_grad, dict) else None
+            print(f"[rank {config['rank']}] epoch {epoch} gradients {_summarize_grad(synced_grad)} loss={loss}", flush=True)
     finally:
         # Step 5: teardown last.
         algo_module.teardown(comm_ctx)

@@ -1,12 +1,8 @@
 """ANN model module for distributed training benchmarks."""
 
-from pathlib import Path
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
 
 
 class SimpleANN(nn.Module):
@@ -29,14 +25,6 @@ class SimpleANN(nn.Module):
         return self.net(x)
 
 
-def _load_next_batch(state):
-    try:
-        return next(state["iterator"])
-    except StopIteration:
-        state["iterator"] = iter(state["loader"])
-        return next(state["iterator"])
-
-
 def _flatten_gradients(model):
     grads = []
     for param in model.parameters():
@@ -47,9 +35,12 @@ def _flatten_gradients(model):
 
 def build_model(config: dict):
     """Build and initialize ANN model state."""
+    # CRITICAL: Set fixed seed on ALL ranks before model creation to ensure
+    # identical parameter initialization. This is required for valid distributed SGD.
+    seed = int(config.get("seed", 42))
+    torch.manual_seed(seed)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    project_root = Path(__file__).resolve().parents[2]
-    data_root = Path(config.get("data_root", project_root / "data"))
 
     model = SimpleANN(
         input_dim=int(config.get("ann_input_dim", 28 * 28)),
@@ -59,48 +50,46 @@ def build_model(config: dict):
 
     optimizer = optim.SGD(model.parameters(), lr=float(config.get("lr", 0.01)))
     criterion = nn.CrossEntropyLoss()
-    transform = transforms.ToTensor()
-    dataset = datasets.FashionMNIST(
-        root=str(data_root),
-        train=True,
-        download=False,
-        transform=transform,
-    )
-    loader = DataLoader(
-        dataset,
-        batch_size=int(config.get("batch_size", config.get("ann_batch_size", 64))),
-        shuffle=True,
-    )
 
     return {
         "model": model,
         "optimizer": optimizer,
         "criterion": criterion,
-        "loader": loader,
         "device": device,
-        "iterator": iter(loader),
         "lr": float(config.get("lr", 0.01)),
     }
 
 
 def train_step(state, config: dict):
-    """Execute one Fashion-MNIST training step."""
+    """Execute one Fashion-MNIST training step on synthetic data."""
     model = state["model"]
-    optimizer = state["optimizer"]
     criterion = state["criterion"]
     device = state["device"]
+    lr = state["lr"]
+    rank = config.get("rank", 0)
+    epoch = config.get("current_epoch", 0)
 
-    x, y = _load_next_batch(state)
-    x = x.view(x.size(0), -1).to(device)
-    y = y.to(device)
+    # Generate rank-specific synthetic data: different data per rank enables real gradient averaging
+    # Seed includes rank and epoch for reproducibility while maintaining data diversity
+    data_seed = 1000 + rank * 100 + epoch
+    torch.manual_seed(data_seed)
+    
+    batch_size = int(config.get("batch_size", 32))
+    x = torch.randn(batch_size, 28 * 28, dtype=torch.float32).to(device)
+    y = torch.randint(0, 10, (batch_size,), dtype=torch.long).to(device)
 
-    model.zero_grad(set_to_none=True)
-    optimizer.zero_grad(set_to_none=True)
+    model.zero_grad()
     logits = model(x)
     loss = criterion(logits, y)
     loss.backward()
 
     grad_vector = _flatten_gradients(model)
+
+    # Local SGD update
+    with torch.no_grad():
+        for param in model.parameters():
+            if param.grad is not None:
+                param.data -= lr * param.grad
 
     return {
         "rank": config.get("rank", 0),

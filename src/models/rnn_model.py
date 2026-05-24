@@ -22,6 +22,11 @@ class SimpleRNN(nn.Module):
 
 def build_model(config: dict):
     """Build and initialize RNN model."""
+    # CRITICAL: Set fixed seed on ALL ranks before model creation to ensure
+    # identical parameter initialization. This is required for valid distributed SGD.
+    seed = int(config.get("seed", 42))
+    torch.manual_seed(seed)
+    
     model = SimpleRNN()
     return {
         "model": model,
@@ -35,9 +40,15 @@ def train_step(model_obj, config: dict):
     model = model_obj["model"]
     criterion = model_obj["criterion"]
     lr = model_obj["lr"]
+    rank = config.get("rank", 0)
+    epoch = config.get("current_epoch", 0)
     
-    # Synthetic batch: 8 samples of sequence length 20, vocab size 100
-    batch_size = 8
+    # Generate rank-specific synthetic data: different data per rank enables real gradient averaging
+    # Seed includes rank and epoch for reproducibility while maintaining data diversity
+    data_seed = 1000 + rank * 100 + epoch
+    torch.manual_seed(data_seed)
+    
+    batch_size = int(config.get("batch_size", 8))
     seq_length = 20
     x = torch.randint(0, 100, (batch_size, seq_length), dtype=torch.long)
     y = torch.randint(0, 5, (batch_size,), dtype=torch.long)
@@ -69,3 +80,14 @@ def train_step(model_obj, config: dict):
         "gradients": grad_vector,
         "loss": float(loss),
     }
+
+
+def apply_synced_gradients(model_obj, averaged_grad):
+    """Apply synchronized averaged gradients back into the model."""
+    model = model_obj["model"]
+    
+    pointer = 0
+    for param in model.parameters():
+        numel = param.numel()
+        param.grad = averaged_grad[pointer:pointer + numel].view_as(param)
+        pointer += numel
