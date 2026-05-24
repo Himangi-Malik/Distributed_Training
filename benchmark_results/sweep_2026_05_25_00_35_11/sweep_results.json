@@ -1,0 +1,12 @@
+{
+  "total": 3,
+  "completed": 0,
+  "failed": 3,
+  "failed_configs": [
+    "algo=ring_model=ann_bs=32_ep=1_ws=1",
+    "algo=ring_model=ann_bs=32_ep=1_ws=2",
+    "algo=ring_model=ann_bs=32_ep=1_ws=4"
+  ],
+  "start_time": "2026-05-25T00:35:11.691027",
+  "end_time": "2026-05-25T00:35:46.054620"
+}

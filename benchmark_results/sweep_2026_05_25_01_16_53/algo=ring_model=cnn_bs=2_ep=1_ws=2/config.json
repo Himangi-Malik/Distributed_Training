@@ -1,0 +1,15 @@
+{
+  "mode": "distributed",
+  "algo": "ring",
+  "model": "cnn",
+  "lr": 0.01,
+  "batch_size": 2,
+  "epochs": 1,
+  "steps_per_epoch": 10,
+  "world_size": 2,
+  "ip_list": [
+    "127.0.0.1",
+    "127.0.0.1"
+  ],
+  "base_port": 5000
+}

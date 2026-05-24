@@ -87,11 +87,8 @@ def run_worker(config):
                     local_grad = {"rank": rank, "gradients": torch.tensor([0.0], dtype=torch.float32)}
                 compute_time = time.perf_counter() - compute_start
                 
-                # Extract gradient info
-                grad_tensor = local_grad.get("gradients", torch.tensor([0.0]))
-                grad_norm = _compute_grad_norm(grad_tensor)
+                # Extract loss from local gradients (not synchronized)
                 loss = local_grad.get("loss", 0.0)
-                grad_size_bytes = grad_tensor.numel() * 4  # float32
 
                 # SYNC: Gradient Synchronization (algo_module.average)
                 sync_start = time.perf_counter()
@@ -101,6 +98,11 @@ def run_worker(config):
                     print(f"[rank {rank}] epoch {epoch} step {step} warning: average placeholder hit: {error}", flush=True)
                     synced_grad = local_grad
                 sync_time = time.perf_counter() - sync_start
+                
+                # Extract gradient info from synchronized gradients (all ranks should have identical values)
+                grad_tensor = synced_grad.get("gradients", torch.tensor([0.0]))
+                grad_norm = _compute_grad_norm(grad_tensor)
+                grad_size_bytes = grad_tensor.numel() * 4  # float32
 
                 # OPTIM: Apply Synchronized Gradients (optimizer step)
                 optim_start = time.perf_counter()
