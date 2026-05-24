@@ -28,10 +28,14 @@ def build_model(config: dict):
     torch.manual_seed(seed)
     
     model = SimpleRNN()
+    lr = float(config.get("lr", 0.01))
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+    
     return {
         "model": model,
         "criterion": nn.CrossEntropyLoss(),
-        "lr": float(config.get("lr", 0.01)),
+        "optimizer": optimizer,
+        "lr": lr,
     }
 
 
@@ -42,10 +46,16 @@ def train_step(model_obj, config: dict):
     lr = model_obj["lr"]
     rank = config.get("rank", 0)
     epoch = config.get("current_epoch", 0)
+    step = config.get("step", 0)
     
     # Generate rank-specific synthetic data: different data per rank enables real gradient averaging
     # Seed includes rank and epoch for reproducibility while maintaining data diversity
-    data_seed = 1000 + rank * 100 + epoch
+    data_seed = (
+        1000
+        + rank * 100000
+        + epoch * 1000
+        + step
+    )
     torch.manual_seed(data_seed)
     
     batch_size = int(config.get("batch_size", 8))
@@ -69,12 +79,6 @@ def train_step(model_obj, config: dict):
     
     grad_vector = torch.cat(grad_list) if grad_list else torch.tensor([0.0], dtype=torch.float32)
     
-    # Local SGD update
-    with torch.no_grad():
-        for param in model.parameters():
-            if param.grad is not None:
-                param.data -= lr * param.grad
-    
     return {
         "rank": config.get("rank", 0),
         "gradients": grad_vector,
@@ -85,9 +89,13 @@ def train_step(model_obj, config: dict):
 def apply_synced_gradients(model_obj, averaged_grad):
     """Apply synchronized averaged gradients back into the model."""
     model = model_obj["model"]
+    optimizer = model_obj["optimizer"]
     
     pointer = 0
     for param in model.parameters():
         numel = param.numel()
         param.grad = averaged_grad[pointer:pointer + numel].view_as(param)
         pointer += numel
+    
+    optimizer.step()
+    optimizer.zero_grad(set_to_none=True)

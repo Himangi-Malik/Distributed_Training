@@ -68,10 +68,16 @@ def train_step(state, config: dict):
     lr = state["lr"]
     rank = config.get("rank", 0)
     epoch = config.get("current_epoch", 0)
+    step = config.get("step", 0)
 
     # Generate rank-specific synthetic data: different data per rank enables real gradient averaging
     # Seed includes rank and epoch for reproducibility while maintaining data diversity
-    data_seed = 1000 + rank * 100 + epoch
+    data_seed = (
+        1000
+        + rank * 100000
+        + epoch * 1000
+        + step
+    )
     torch.manual_seed(data_seed)
     
     batch_size = int(config.get("batch_size", 32))
@@ -84,12 +90,6 @@ def train_step(state, config: dict):
     loss.backward()
 
     grad_vector = _flatten_gradients(model)
-
-    # Local SGD update
-    with torch.no_grad():
-        for param in model.parameters():
-            if param.grad is not None:
-                param.data -= lr * param.grad
 
     return {
         "rank": config.get("rank", 0),
@@ -110,3 +110,4 @@ def apply_synced_gradients(state, averaged_grad):
         pointer += numel
 
     optimizer.step()
+    optimizer.zero_grad(set_to_none=True)

@@ -5,6 +5,7 @@
   "lr": 0.01,
   "batch_size": 32,
   "epochs": 5,
+  "steps_per_epoch": 10,
   "world_size": 3,
   "ip_list": [
     "127.0.0.1",
