@@ -5,11 +5,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-if __package__ is None or __package__ == "":
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from benchmarking.benchmark_sweep import generate_sweep_configs, config_to_dirname
-from benchmarking.run_single_benchmark import run_single_benchmark
+from .benchmark_sweep import generate_sweep_configs, config_to_dirname
+from .run_single_benchmark import run_single_benchmark
 
 
 def run_full_sweep(

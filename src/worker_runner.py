@@ -49,7 +49,6 @@ def run_worker(config):
 
     print(
         f"[rank {rank}] start "
-        f"mode={config['mode']} "
         f"algo={config['algo']} "
         f"model={config['model']} "
         f"epochs={epochs} "

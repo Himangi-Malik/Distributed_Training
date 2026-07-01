@@ -1,7 +1,7 @@
 {
   "mode": "distributed",
   "algo": "ring",
-  "model": "rnn",
+  "model": "ann",
   "lr": 0.01,
   "batch_size": 2,
   "epochs": 1,

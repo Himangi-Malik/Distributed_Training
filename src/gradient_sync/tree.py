@@ -36,22 +36,14 @@ def setup_distributed(config: dict) -> dict:
     )
     
     return {
-        "mode": "distributed",
         "rank": rank,
         "world_size": world_size,
-        "transport": "socket",
         "tree_structure": tree_structure,
         **endpoints,
     }
 
 
 def setup(config: dict) -> dict:
-    """Initialize tree aggregation context."""
-    mode = config.get("mode", "distributed")
-
-    if mode != "distributed":
-        raise ValueError("mode must be distributed")
-
     return setup_distributed(config)
 
 

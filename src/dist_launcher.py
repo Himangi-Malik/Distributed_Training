@@ -5,13 +5,6 @@ import time
 
 from worker_runner import run_worker
 
-CONFIG_PATH = "config.json"
-
-
-def load_json_config(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as file_handle:
-        return json.load(file_handle)
-
 def create_socket():
     return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -73,9 +66,9 @@ def _get_binary_tree_structure(rank: int, world_size: int) -> dict:
     return {"parent": parent, "left_child": left_child, "right_child": right_child}
 
 
-def build_tree_topology(rank):
+def build_tree_topology(config):
     """Setup binary tree topology for distributed tree aggregation."""
-    config = load_json_config(CONFIG_PATH)
+    rank = config["rank"]
     world_size = config["world_size"]
     base_port = int(config.get("base_port", 5000))
     local_ip = config["ip_list"][rank]
@@ -149,9 +142,9 @@ def build_tree_topology(rank):
     return endpoints
 
 
-def build_parameter_server_topology(rank):
+def build_parameter_server_topology(config):
     """Setup parameter server topology: rank 0 is server, others are clients."""
-    config = load_json_config(CONFIG_PATH)
+    rank = config["rank"]
     world_size = config["world_size"]
     base_port = int(config.get("base_port", 5000))
     local_ip = config["ip_list"][rank]
@@ -212,9 +205,9 @@ def build_parameter_server_topology(rank):
     return endpoints
 
 
-def build_ring_topology(rank):
+def build_ring_topology(config):
     """Setup ring topology for distributed ring aggregation."""
-    config = load_json_config(CONFIG_PATH)
+    rank = config["rank"]
     local_ip = config["ip_list"][rank]
     base_port = int(config.get("base_port", 5000))
     local_port = base_port + rank
@@ -264,24 +257,24 @@ def build_ring_topology(rank):
     }
 
 
-def build_distributed_topology(algo, rank):
+def build_distributed_topology(config):
+
+    algo = config["algo"]
+
     if algo == "ring":
-        return build_ring_topology(rank)
+        return build_ring_topology(config)
 
     if algo == "tree":
-        return build_tree_topology(rank)
+        return build_tree_topology(config)
 
     if algo == "parameter_server":
-        return build_parameter_server_topology(rank)
+        return build_parameter_server_topology(config)
 
-    raise ValueError("Unknown algo")
+    raise ValueError(f"Unknown algorithm: {algo}")
 
 
 def launch_distributed(config):
-    topo = build_distributed_topology(
-        config["algo"],
-        config["rank"],
-    )
+    topo = build_distributed_topology(config)
 
     worker_config = {
         **config,

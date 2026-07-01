@@ -16,25 +16,18 @@ def setup_distributed(config: dict) -> dict:
         )
 
     print(
-        f"[ring.setup] rank={config['rank']} mode=distributed transport=socket placeholder_endpoints=false",
+        f"[ring.setup] rank={config['rank']} ",
         flush=True,
     )
     return {
-        "mode": "distributed",
         "rank": config["rank"],
         "world_size": config["world_size"],
         "left_endpoint": left_endpoint,
         "right_endpoint": right_endpoint,
-        "transport": "socket",
     }
 
 
 def setup(config: dict) -> dict:
-    mode = config["mode"]
-
-    if mode != "distributed":
-        raise ValueError("mode must be distributed")
-
     return setup_distributed(config)
 
 

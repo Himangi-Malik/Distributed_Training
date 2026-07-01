@@ -1,10 +1,16 @@
 import json
 import subprocess
 import sys
-import os
 import shutil
 from pathlib import Path
 from typing import Dict, Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = PROJECT_ROOT / "src"
+CONFIG_PATH = SRC_DIR / "config.json"
+CONFIG_BACKUP_PATH = SRC_DIR / "config.json.backup"
+SRC_METRICS_DIR = SRC_DIR / "benchmark_results"
+MAIN_RUNNER_PATH = SRC_DIR / "main_comm_runner.py"
 
 
 def create_config_json(base_config: Dict[str, Any], sweep_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -55,14 +61,19 @@ def run_single_benchmark(
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Remove old metrics from previous runs
+    if SRC_METRICS_DIR.exists():
+        for file in SRC_METRICS_DIR.glob("metrics_rank*.json"):
+            file.unlink()
+        
     # Save config to output (for reference)
     config_ref_path = output_dir / "config.json"
     with open(config_ref_path, "w") as f:
         json.dump(full_config, f, indent=2)
     
     # Backup original config.json
-    original_config_path = Path("src/config.json")
-    backup_config_path = Path("src/config.json.backup")
+    original_config_path = CONFIG_PATH
+    backup_config_path = CONFIG_BACKUP_PATH
     
     if original_config_path.exists():
         shutil.copy(original_config_path, backup_config_path)
@@ -81,16 +92,16 @@ def run_single_benchmark(
         for rank in range(world_size):
             cmd = [
                 sys.executable,
-                "main_comm_runner.py",
+                str(MAIN_RUNNER_PATH),
                 "--rank", str(rank),
             ]
             
             try:
                 proc = subprocess.Popen(
                     cmd,
-                    cwd="src",
-                    stdout=subprocess.PIPE if not verbose else None,
-                    stderr=subprocess.PIPE if not verbose else None,
+                    cwd=str(SRC_DIR),
+                    stdout=None if verbose else subprocess.PIPE,
+                    stderr=None if verbose else subprocess.PIPE,
                     text=True,
                 )
                 processes.append((rank, proc))
@@ -110,7 +121,12 @@ def run_single_benchmark(
         failed_ranks = []
         for rank, proc in processes:
             try:
-                proc.wait(timeout=3600)  # 1 hour timeout
+                if verbose:
+                    proc.wait(timeout=3600)  # 1 hour timeout
+                else:
+                    stdout_text, stderr_text = proc.communicate(timeout=3600)
+                    if proc.returncode != 0 and stderr_text:
+                        print(f"  Rank {rank} stderr:\n{stderr_text.rstrip()}")
                 if proc.returncode != 0:
                     failed_ranks.append(rank)
                     if verbose:
@@ -128,14 +144,18 @@ def run_single_benchmark(
                 if verbose:
                     print(f"  Rank {rank} error: {e}")
         
-        # Copy metrics from benchmark_results/ to output_dir (they're in src/benchmark_results/)
-        src_metrics_dir = Path("src/benchmark_results")
+        # Copy only the metrics files for the current run
+        src_metrics_dir = SRC_METRICS_DIR
         if src_metrics_dir.exists():
-            for metrics_file in src_metrics_dir.glob("metrics_rank*.json"):
-                dest_file = output_dir / metrics_file.name
-                shutil.copy(metrics_file, dest_file)
-                if verbose:
-                    print(f"  Copied {metrics_file.name} to {output_dir}")
+            for rank in range(config["world_size"]):
+                metrics_file = src_metrics_dir / f"metrics_rank{rank}.json"
+
+                if metrics_file.exists():
+                    dest_file = output_dir / metrics_file.name
+                    shutil.copy(metrics_file, dest_file)
+
+                    if verbose:
+                        print(f"  Copied {metrics_file.name} to {output_dir}")
         
         # Check if all ranks succeeded
         if failed_ranks:
@@ -148,33 +168,6 @@ def run_single_benchmark(
         # Restore original config.json
         if backup_config_path.exists():
             shutil.move(backup_config_path, original_config_path)
-
-
-if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config-json", required=True, help="Sweep config as JSON string or file")
-    parser.add_argument("--base-config", required=True, help="Path to base config.json")
-    parser.add_argument("--output-dir", required=True, help="Output directory for metrics")
-    parser.add_argument("--verbose", action="store_true")
-    
-    args = parser.parse_args()
-    
-    # Load configs
-    with open(args.base_config) as f:
-        base_config = json.load(f)
-    
-    if args.config_json.startswith("{"):
-        sweep_config = json.loads(args.config_json)
-    else:
-        with open(args.config_json) as f:
-            sweep_config = json.load(f)
-    
-    output_dir = Path(args.output_dir)
-    
-    success = run_single_benchmark(sweep_config, base_config, output_dir, verbose=args.verbose)
-    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

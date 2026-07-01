@@ -31,16 +31,14 @@ def setup_distributed(config: dict) -> dict:
         client_endpoints = {"server_endpoint": server_endpoint}
     
     print(
-        f"[ps.setup] rank={rank} role={'server' if is_server else 'client'} mode=distributed transport=socket",
+        f"[ps.setup] rank={rank} role={'server' if is_server else 'client'}",
         flush=True,
     )
     
     return {
-        "mode": "distributed",
         "rank": rank,
         "world_size": world_size,
         "is_server": is_server,
-        "transport": "socket",
         **client_endpoints,
     }
 

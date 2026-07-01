@@ -25,13 +25,10 @@ def build_runtime_config(args: argparse.Namespace) -> dict:
 
 
 def validate_config(config: dict) -> None:
-    required_keys = ["mode", "algo", "model", "lr", "world_size", "ip_list"]
+    required_keys = ["algo", "model", "lr", "world_size", "ip_list"]
     missing_keys = [key for key in required_keys if key not in config]
     if missing_keys:
         raise ValueError(f"Missing required config keys: {missing_keys}")
-
-    if config["mode"] != "distributed":
-        raise ValueError("mode must be distributed")
 
     if config["algo"] not in {"ring", "tree", "parameter_server"}:
         raise ValueError("algo must be one of: ring, tree, parameter_server")
@@ -41,10 +38,6 @@ def validate_config(config: dict) -> None:
 
     if config["world_size"] != len(config["ip_list"]):
         raise ValueError("world_size must match number of values in ip_list")
-
-    if config["mode"] == "distributed":
-        if not 0 <= config["rank"] < config["world_size"]:
-            raise ValueError("rank must be in range [0, world_size - 1]")
 
 
 def main() -> None:
