@@ -22,11 +22,13 @@ from metrics.summary import SummaryGenerator
 # ==========================================================
 
 ALGORITHMS = [
+    "parameter_server",
     "ring",
+    "tree"
 ]
 
 MODELS = [
-    "ann"
+    "cnn"
 ]
 
 WORLD_SIZES = [

@@ -8,5 +8,4 @@ __pycache__/
 .vscode/
 build/
 dist/
-benchmark_results/
 src/benchmark_results/
