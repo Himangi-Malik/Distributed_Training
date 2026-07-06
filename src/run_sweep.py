@@ -14,27 +14,33 @@ import json
 import subprocess
 import sys
 
+from metrics.figures import generate_all_figures
 from metrics.rank_metrics import RankMetrics
 from metrics.summary import SummaryGenerator
+from metrics.tables import generate_all_tables
 
 # ==========================================================
 # Benchmark Search Space
 # ==========================================================
 
 ALGORITHMS = [
-    "ring"
+    "ring",
+    "tree",
+    "parameter_server",
 ]
 
 MODELS = [
-    "cnn"
+    "ann",
+    "cnn",
+    "rnn"
 ]
 
 WORLD_SIZES = [
-    3
+    1,2,4,8,16
 ]
 
 BATCH_SIZES = [
-    32
+    16,32,64,128
 ]
 
 
@@ -244,6 +250,11 @@ def main():
     print(f"Succeeded  : {successful}")
     print(f"Failed     : {total - successful}")
     print("===================================")
+
+    print("\nGenerating paper tables and figures...")
+    generate_all_tables()
+    generate_all_figures()
+    print("Done.")
 
 if __name__ == "__main__":
     main()
