@@ -1,0 +1,4 @@
+Algorithm,Compute (ms),Sync (ms),Optimizer (ms),Iteration (ms)
+Parameter Server,46.25,29.39,1.33,76.97
+Ring,45.34,47.47,1.26,94.07
+Tree,40.92,28.95,1.03,70.9

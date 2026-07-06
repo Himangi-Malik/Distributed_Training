@@ -1,0 +1,4 @@
+Algorithm,Mean Sync (ms),Median Sync (ms),Std Sync (ms),P95 Sync (ms)
+Parameter Server,29.39,20.23,58.53,48.68
+Ring,47.47,40.24,51.96,70.94
+Tree,28.95,21.6,48.41,50.99
