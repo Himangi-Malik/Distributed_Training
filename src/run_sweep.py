@@ -31,16 +31,14 @@ ALGORITHMS = [
 
 MODELS = [
     "ann",
-    "cnn",
-    "rnn"
 ]
 
 WORLD_SIZES = [
-    1,2,4,8,16
+    1,2,4,8
 ]
 
 BATCH_SIZES = [
-    16,32,64,128,256,512
+    128,256,512
 ]
 
 

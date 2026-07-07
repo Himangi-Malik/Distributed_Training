@@ -22,11 +22,15 @@ class SocketEndpoint:
         self._listener = listener
         self._rank = rank
         self._direction = direction
+        self.bytes_sent = 0
+        self.bytes_received = 0
 
     def send(self, payload):
         raw = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
         header = len(raw).to_bytes(4, byteorder="big")
-        self._conn.sendall(header + raw)
+        packet = header + raw
+        self._conn.sendall(packet)
+        self.bytes_sent += len(packet)
 
     def recv(self):
         data = bytearray()
@@ -42,7 +46,9 @@ class SocketEndpoint:
             if not chunk:
                 raise ConnectionError("socket closed while receiving payload")
             data.extend(chunk)
-        return pickle.loads(bytes(data))
+        payload = bytes(data)
+        self.bytes_received += 4 + size
+        return pickle.loads(payload)
 
     def close(self):
         try:

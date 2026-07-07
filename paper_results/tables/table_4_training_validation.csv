@@ -1,4 +1,4 @@
 Algorithm,Initial Loss,Final Loss,Mean Grad Norm
-Parameter Server,2.32,2.32,0.24
-Ring,2.32,2.32,0.24
-Tree,2.32,2.32,0.24
+Parameter Server,2.31,2.31,0.33
+Ring,2.31,2.31,0.33
+Tree,2.31,2.31,0.33

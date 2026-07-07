@@ -1,11 +1,11 @@
 Parameter,Value
 Dataset,fashion_mnist
-Models,"ann, cnn, rnn"
+Models,ann
 Communication Algorithms,"parameter_server, ring, tree"
-World Sizes,"1, 2, 4, 8, 16"
-Batch Sizes,"16, 32, 64, 128, 256, 512"
+World Sizes,"1, 2, 4, 8"
+Batch Sizes,"128, 256, 512"
 Epochs,5
 Steps per Epoch,10
 Optimizer,SGD
 Learning Rate,0.001
-Total Configurations,269
+Total Configurations,36

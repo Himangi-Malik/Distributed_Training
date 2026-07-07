@@ -22,6 +22,17 @@ class SummaryGenerator:
 
         self.rank_metrics = rank_metrics
 
+    def _recorded_steps(
+        self,
+        rank: RankMetrics,
+    ) -> list:
+
+        return [
+            step
+            for step in rank.steps
+            if not step.is_warmup
+        ]
+
     def _collect(
         self,
         attribute: str,
@@ -34,7 +45,7 @@ class SummaryGenerator:
         values = []
 
         for rank in self.rank_metrics:
-            for step in rank.steps:
+            for step in self._recorded_steps(rank):
                 values.append(
                     getattr(
                         step,
@@ -43,6 +54,26 @@ class SummaryGenerator:
                 )
 
         return values
+
+    def _collect_iteration_maxima(self) -> list[float]:
+        """
+        Collect per-step distributed iteration maxima across ranks.
+        """
+
+        per_step_values: dict[tuple[int, int], list[float]] = {}
+
+        for rank in self.rank_metrics:
+            for step in self._recorded_steps(rank):
+                key = (step.epoch, step.step)
+                per_step_values.setdefault(key, []).append(step.iteration_time)
+
+        expected_ranks = len(self.rank_metrics)
+
+        return [
+            max(values)
+            for _, values in sorted(per_step_values.items())
+            if len(values) == expected_ranks
+        ]
     
     def _compute_statistics(
         self,
@@ -109,7 +140,7 @@ class SummaryGenerator:
         )
 
         iteration = self._compute_statistics(
-            self._collect("iteration_time")
+            self._collect_iteration_maxima()
         )
 
         # --------------------------------------------------
@@ -131,14 +162,18 @@ class SummaryGenerator:
 
         losses = [
             step.loss
-            for step in reference_rank.steps
+            for step in self._recorded_steps(reference_rank)
         ]
 
-        loss = {
-            "initial": losses[0],
-            "final": losses[-1],
-            "mean": mean(losses),
-        }
+        loss = (
+            {
+                "initial": losses[0],
+                "final": losses[-1],
+                "mean": mean(losses),
+            }
+            if losses
+            else {}
+        )
 
         grad_norm = self._compute_statistics(
             self._collect("grad_norm")
@@ -148,16 +183,23 @@ class SummaryGenerator:
         # Derived Metrics
         # --------------------------------------------------
 
-        mean_iteration = iteration["mean"]
-        mean_compute = compute["mean"]
-        mean_sync = sync["mean"]
-        mean_optimizer = optimizer["mean"]
+        mean_iteration = iteration.get("mean", 0.0)
+        mean_compute = compute.get("mean", 0.0)
+        mean_sync = sync.get("mean", 0.0)
+        mean_optimizer = optimizer.get("mean", 0.0)
 
-        fractions = {
-            "compute_fraction": mean_compute / mean_iteration,
-            "sync_fraction": mean_sync / mean_iteration,
-            "optimizer_fraction": mean_optimizer / mean_iteration,
-        }
+        if mean_iteration:
+            fractions = {
+                "compute_fraction": mean_compute / mean_iteration,
+                "sync_fraction": mean_sync / mean_iteration,
+                "optimizer_fraction": mean_optimizer / mean_iteration,
+            }
+        else:
+            fractions = {
+                "compute_fraction": 0.0,
+                "sync_fraction": 0.0,
+                "optimizer_fraction": 0.0,
+            }
 
         # --------------------------------------------------
         # Final Summary

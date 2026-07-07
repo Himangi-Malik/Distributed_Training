@@ -33,6 +33,17 @@ def _compute_grad_norm(grad_tensor: torch.Tensor) -> float:
     return 0.0
 
 
+def _snapshot_endpoint_bytes(comm_ctx) -> tuple[int, int]:
+    bytes_sent = 0
+    bytes_received = 0
+
+    for value in comm_ctx.values():
+        bytes_sent += getattr(value, "bytes_sent", 0)
+        bytes_received += getattr(value, "bytes_received", 0)
+
+    return bytes_sent, bytes_received
+
+
 def run_worker(config):
     algo_module = get_algo_module(config["algo"])
     model_module = get_model_module(config["model"])
@@ -101,7 +112,9 @@ def run_worker(config):
                     batch = next(train_iterator)
 
                 # ---------- Compute ----------
-                start = time.perf_counter()
+                compute_start = time.perf_counter()
+                iteration_start = compute_start
+                comm_before = _snapshot_endpoint_bytes(comm_ctx)
 
                 local_grad = model_module.train_step(
                     state,
@@ -109,7 +122,7 @@ def run_worker(config):
                     step_config,
                 )
 
-                compute_time = time.perf_counter() - start
+                compute_time = time.perf_counter() - compute_start
                 loss = local_grad.get("loss", 0.0)
 
                 # ---------- Synchronization ----------
@@ -130,11 +143,6 @@ def run_worker(config):
 
                 grad_norm = _compute_grad_norm(grad_tensor)
 
-                grad_size_bytes = (
-                    grad_tensor.numel()
-                    * grad_tensor.element_size()
-                )
-
                 # ---------- Optimizer ----------
                 start = time.perf_counter()
 
@@ -144,25 +152,30 @@ def run_worker(config):
                 )
 
                 optim_time = time.perf_counter() - start
+                iteration_time = time.perf_counter() - iteration_start
+                comm_after = _snapshot_endpoint_bytes(comm_ctx)
+                bytes_sent = comm_after[0] - comm_before[0]
+                bytes_received = comm_after[1] - comm_before[1]
 
                 step_metrics = StepMetrics(
-                epoch=epoch,
-                step=step,
-                is_warmup=(epoch == 0 and step == 0),
+                    epoch=epoch,
+                    step=step,
+                    is_warmup=(epoch == 0 and step == 0),
 
-                compute_time=compute_time,
-                sync_time=sync_time,
-                optim_time=optim_time,
+                    compute_time=compute_time,
+                    sync_time=sync_time,
+                    optim_time=optim_time,
+                    iteration_time=iteration_time,
 
-                loss=float(loss)
-                if isinstance(loss, torch.Tensor)
-                else loss,
+                    loss=float(loss)
+                    if isinstance(loss, torch.Tensor)
+                    else loss,
 
-                grad_norm=grad_norm,
+                    grad_norm=grad_norm,
 
-                bytes_sent=grad_size_bytes,
-                bytes_received=grad_size_bytes,
-            )
+                    bytes_sent=bytes_sent,
+                    bytes_received=bytes_received,
+                )
 
                 metrics.add_step(step_metrics)
             print(
@@ -172,7 +185,7 @@ def run_worker(config):
                     f"compute={compute_time:.4f}s "
                     f"sync={sync_time:.4f}s "
                     f"optim={optim_time:.4f}s "
-                    f"total={(compute_time + sync_time + optim_time):.4f}s "
+                    f"total={iteration_time:.4f}s "
                     f"loss={loss:.6f} "
                     f"grad_norm={grad_norm:.6f}",
                     flush=True,

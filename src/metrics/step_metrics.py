@@ -16,6 +16,7 @@ class StepMetrics:
     compute_time: float
     sync_time: float
     optim_time: float
+    iteration_time: float
 
     # Model Metrics
     loss: float
@@ -25,21 +26,18 @@ class StepMetrics:
     bytes_sent: int
     bytes_received: int
 
-    @property
-    def iteration_time(self) -> float:
-        """
-        Total time for one training iteration.
-        """
-        return (
-            self.compute_time
-            + self.sync_time
-            + self.optim_time
-        )
-
     def to_dict(self) -> dict:
         return asdict(self)
     
 
     @classmethod
     def from_dict(cls, data: dict) -> "StepMetrics":
+        if "iteration_time" not in data:
+            data = dict(data)
+            data["iteration_time"] = (
+                data["compute_time"]
+                + data["sync_time"]
+                + data["optim_time"]
+            )
+
         return cls(**data)  
